@@ -24,6 +24,11 @@
 #include "UpdateCerts.h"
 #include "LoRaWANUpdateClient.h"
 
+#if defined(TARGET_DISCO_L475VG_IOT01A)
+#include "stm32l475e_iot01_tsensor.h"
+#include "stm32l475e_iot01_hsensor.h"
+#endif
+
 EventQueue evqueue;
 
 // DEV EUI is the authentication of the device itself in the network and to the server
@@ -232,16 +237,53 @@ static void send_message() {
         return;
     }
 
-    // otherwise just send a random message (this is where you'd put your sensor data)
+    uint16_t sizeToSend = 0;
+    uint8_t portToSend=0;
+    int16_t retcode= 0;
+
+    #if defined(TARGET_DISCO_L475VG_IOT01A)
+
+    //board supports sensors
+    #if defined(P_READING) && P_READING==1
+    float hum = BSP_HSENSOR_ReadHumidity();
+    uint16_t hum_unit = (uint8_t) hum;
+    uint16_t hum_dot  = (uint8_t) ((hum-hum_unit)*100); 
+    tr_info("Humidity computed is %d,%d ",hum_unit,hum_dot);
+    //tr_info("Humidity read : %f",hum);
+    #endif
+
+    float temp = BSP_TSENSOR_ReadTemp();
+    uint16_t TEMP_unit = (uint8_t) temp;
+    uint16_t TEMP_dot  = (uint8_t) ((temp-TEMP_unit)*100); 
+    tr_info("Temp computed is %d,%d °C ",TEMP_unit,TEMP_dot);
+    //tr_info("Temp read °C : %f",temp);
+
+    
+    char messageTemp[30] = {0};
+    #if defined(P_READING) && P_READING==1
+    sprintf(messageTemp,"TEMP:%2d,%2d||HUM:%2d,%2d",TEMP_unit,TEMP_dot,hum_unit,hum_dot);
+    #else
+    sprintf(messageTemp,"TEMP:%2d,%2d",TEMP_unit,TEMP_dot);
+    #endif
+
+    retcode = lorawan.send(110, (uint8_t*)(&messageTemp), sizeof(messageTemp), MSG_UNCONFIRMED_FLAG);
+    sizeToSend = sizeof(float);
+    portToSend = 110;
+    #else
+    // board is not recognised as using sensors
+    // just send a random message (this is where you'd put your sensor data)
     int r = rand();
-    int16_t retcode = lorawan.send(15, (uint8_t*)(&r), sizeof(r), MSG_UNCONFIRMED_FLAG);
+    retcode = lorawan.send(15, (uint8_t*)(&r), sizeof(r), MSG_UNCONFIRMED_FLAG);
+    sizeToSend = sizeof(r);
+    portToSend = 15;
+    #endif
 
     if (retcode < 0) {
-        printf("send_message for normal message on port %d failed (%d)\n", 15, retcode);
+        printf("send_message for normal message on port %d failed (%d)\n", portToSend, retcode);
         queue_next_send_message();
     }
     else {
-        printf("%d bytes scheduled for transmission on port %d\n", sizeof(r), 15);
+        printf("%d bytes scheduled for transmission on port %d\n", sizeToSend, portToSend);
     }
 }
 
@@ -258,13 +300,37 @@ static void queue_next_send_message() {
     evqueue.call_in(backoff, &send_message);
 }
 
+static void startup_tests() {
+}
 int main() {
-    printf("\nMbed OS 5 Firmware Update over LoRaWAN\n");
+    printf("\n  Mbed OS 5 Firmware Update over LoRaWAN  \n");
+    printf("\n-- This version reports Temperature In Celsius --\n");
+    #if defined(P_READING) && P_READING==1
+    printf("\n-- It also reports air Humidity                --\n");
+    #endif
 
     // Enable trace output for this demo, so we can see what the LoRaWAN stack does
     mbed_trace_init();
     mbed_trace_exclude_filters_set("QSPIF");
 
+    //Init Sensors if supported at startup
+    #if defined(TARGET_DISCO_L475VG_IOT01A)
+    #if defined(P_READING) && P_READING==1
+    if (BSP_HSENSOR_Init() != HSENSOR_OK){
+        printf("Humidity Sensor initialization failed!\n");
+        return -1;
+    }else{
+        printf("Humidity Sensor initialization SUCCESS\n");
+    }
+    #endif
+
+    if (BSP_TSENSOR_Init() != TSENSOR_OK){
+        printf("Temp Sensor initialization failed!\n");
+        return -1;
+    }else{
+        printf("Temp Sensor initialization SUCCESS\n");
+    }
+    #endif
     if (lorawan.initialize(&evqueue) != LORAWAN_STATUS_OK) {
         printf("LoRa initialization failed!\n");
         return -1;
