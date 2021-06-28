@@ -5,7 +5,11 @@ This application implements multicast firmware updates over LoRaWAN for Mbed OS 
 * [LoRaWAN Remote Multicast Setup Specification v1.0.0](https://lora-alliance.org/resource-hub/lorawan-remote-multicast-setup-specification-v100).
 * [LoRaWAN Fragmented Data Block Transport Specification v1.0.0](https://lora-alliance.org/resource-hub/lorawan-fragmented-data-block-transport-specification-v100).
 * [LoRaWAN Application Layer Clock Synchronization Specification v1.0.0](https://lora-alliance.org/resource-hub/lorawan-application-layer-clock-synchronization-specification-v100).
-* Delta updates.
+* [Status & Version Specification v0.2](https://github.com/millearthur/mbed-lorawan-update-client/LoRaWAN%20Version%20and%20Status%20Specification_v0_2.pdf).
+
+* Delta updates: 
+    1. Using JanPATCH (JDIIF/JPTCH)
+    2. Using DDELTA & Compression (See [lorawan-update-client](https://github.com/millearthur/mbed-lorawan-update-client))
 * Cryptographic verification of new firmware.
 * Bootloader for flashing new firmware images.
 
@@ -21,6 +25,7 @@ If you've added a new target configuration, please send a pull request to this r
 
 ## Build this application
 
+### Mbed Tools
 1. Install [Mbed CLI](https://os.mbed.com/docs/v5.10/tools/installation-and-setup.html) and the [GNU ARM Embedded Toolchain 6](https://developer.arm.com/open-source/gnu-toolchain/gnu-rm).
 1. Import this repository via:
 
@@ -31,6 +36,8 @@ If you've added a new target configuration, please send a pull request to this r
 1. In `main.cpp` specify your AppEui and AppKey.
 1. In `mbed_app.json` specify your frequency plan (and [FSB](https://github.com/ARMmbed/mbed-os/blob/master/features/lorawan/FSB_Usage.txt)).
 
+
+### Signing Tool
 Next, you need to generate a public/private key pair. The public key is held in your application, and the private key is used to sign updates.
 
 1. Install [Node.js 8 or higher](https://nodejs.org).
@@ -48,6 +55,9 @@ Next, you need to generate a public/private key pair. The public key is held in 
     $ lorawan-fota-signing-tool create-keypair -d yourdomain.com -m your-device-model-string
     ```
 
+**Note** That a new version of the tool is available to be able to patch for the new DDELTA patching methode. (See [lorawan-fota-signing-tool](https://github.com/millearthur/lorawan-fota-signing-tool))
+
+### Build
 With everything configured, you can build the application.
 
 1. Copy `.mbedignore_no_rtos` to `.mbedignore` - this removes the RTOS, and is required on targets with less than 32K SRAM (incl. L-TEK FF1705) without a crypto engine. The ECDSA/SHA256 verification will run out of memory if this is not done (`-0xfffffff0` error code). See [Build configuration](#build-configuration) for more information.
@@ -107,7 +117,25 @@ Then:
 
 The update will come in, and after updating the new program should run.
 
+## DDELTA patch 
+**Note** To use the DDELTA update format, you will need to download the [Ddelta tools](https://github.com/julian-klode/ddelta) and the [LZCL compressing tools](https://github.com/ChrisLomont/CompressionTools).
+
+The Delta tool should be used to generate de diff file : 
+
+    $ ./ddelta_generate v1/update.bin  v1/update.bin  v1v2_ddelta_patch.bin
+
+The CompressionTool should be used to compressed the file : 
+
+    $ CompressionTester.exe -c Arithmetic -i v1v2_ddelta_patch.bin -o v1v2_ddelta_patch.bin.ari
+
+And finally sign the external patch created using the signing tool : 
+
+    $ lorawan-fota-signing-tool sign-external-delta --old v1/update.bin --new v2/update.bin  -i v1v2_ddelta_patch.bin.arii -o v1v2_ddelta_patch.bin_signed
+
+
 ## Testing using LoRaServer.io
+
+**NOTE** LoraServer became Chirpstack.io and this interaction method cannot be used anymore. If you are using Chirpstack and want to try the New FUOTA feature, you could use [Python Fuota Application](https://github.com/millearthur/python_app_fuota)
 
 1. Follow the steps to install and configure LoRaServer.io, as described in [fuota-server/README.md](fuota-server/README.md).
 1. Create fragments from a signed binary, via:
@@ -256,6 +284,10 @@ The update file format is:
 1. 1 byte, diff indication. If `0`, then this is not a delta update. If `1` it's a delta update.
 1. 3 bytes, size of current firmware (if delta update). If sending a delta update then this field indicates the size of the current (before patching) firmware.
 
+### New Update Format
+
+Using the new DDELTA patching methods, a new patch format is defined. The *`diff_info[0]`* byte can hold the value `2` that specifies that the update is using a new DDELTA format. The patch will then be handled by the correct algorithms. (See [lorawan-update-client](https://github.com/millearthur/mbed-lorawan-update-client))
+
 ## Building a small firmware image for testing
 
 It's useful to have a small, valid firmware image during testing (similar to `example-firmware/xdot-blinky.bin`) to quickly test the full update flow. To build one:
@@ -290,6 +322,14 @@ It's useful to have a small, valid firmware image during testing (similar to `ex
     **Note:** Compiling with ARMCC typically yields smaller binaries.
 
 1. Find `BUILD/YOUR_TARGET_NAME/GCC_ARM-TINY/mbed-os-example-blinky-no-rtos_update.bin`. This is a binary you can send over a firmware update.
+
+
+## DevEui Helper
+
+In order to help differenciate the devices when using the DISCO platform, a new `DEVEUI` helper file has been added. Since the radio used in this case does not contain a integrated DevEui, a stable Fake EUI will be generated using the Bluetooth address of the board. This requires to build the Bluetooth drivers for the device.
+
+This makes the solution quite heavy to compile, but this feature can be discarded if the board used is not the same, or if the radio module supports an integrated DevEui.
+
 
 ## Mbed OS version
 
