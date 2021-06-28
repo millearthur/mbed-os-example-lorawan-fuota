@@ -24,6 +24,8 @@
 #include "UpdateCerts.h"
 #include "LoRaWANUpdateClient.h"
 
+#include "utils_bd.h"
+
 #if defined(TARGET_DISCO_L475VG_IOT01A)
 #include "stm32l475e_iot01_tsensor.h"
 #include "stm32l475e_iot01_hsensor.h"
@@ -108,9 +110,26 @@ static void switch_class_c_rx2_params() {
     class_c_params.sys_params.rx2_channel.frequency = class_c_details.downlinkFreq;
     class_c_params.sys_params.rx2_channel.datarate = class_c_details.datarate;
 
+    printf("Class C session set with parameters : \n");
+    printf("         - frequency : %ld\n",class_c_params.sys_params.rx2_channel.frequency);
+    printf("         - datarate  : %d\n",class_c_params.sys_params.rx2_channel.datarate);
+    printf("         - dl_frame_counter     : %ld\n",class_c_params.dl_frame_counter);
+    printf("         - ul_frame_counter     : %lu\n",class_c_params.ul_frame_counter);
+    printf("         - keys.nwk_skey    : "); for (size_t i = 0; i < 16; i++){printf(" 0x%02x",class_c_params.keys.nwk_skey[i]);} printf("\n"); 
+    printf("         - keys.app_skey    : "); for (size_t i = 0; i < 16; i++){printf(" 0x%02x",class_c_params.keys.app_skey[i]);} printf("\n"); 
+
+    if(class_c_params.sys_params.rx2_channel.frequency==0){
+        printf("     -> As frequency == 0; skipping class C Set Session, directly switching");
+        printf("     -> Add to queue to return to class A in 2 mins");
+        evqueue.call_in(120000, &switch_to_class_a);
+    }else{
     // and set the class C session
-    lorawan.set_session(&class_c_params);
-    lorawan.set_device_class(CLASS_C);
+        tr_debug("LW SET SESSION : %d ",lorawan.set_session(&class_c_params));
+    }
+
+    //start the C session
+    tr_debug("LW SET DV CLASS: %d ",lorawan.set_device_class(CLASS_C));
+    
 }
 
 static void switch_to_class_c() {
@@ -180,7 +199,11 @@ static void lora_uc_send(LoRaWANUpdateClientSendParams_t &params) {
 
 // Send a message over LoRaWAN - todo, check for duty cycle
 static void send_message() {
-    if (in_class_c_mode) return;
+    if (in_class_c_mode){
+        tr_debug("Device is in class C, not sending now");
+        return;
+    }     
+//    tr_debug("Device Not in C continuing to send data");
 
 #if MBED_CONF_LORAWAN_UPDATE_CLIENT_INTEROP_TESTING
     // after calculating the crc32, that's the only thing we'll send
@@ -288,6 +311,9 @@ static void send_message() {
 }
 
 static void queue_next_send_message() {
+
+    tr_debug("...... trying to queue a new message .......");
+
     if (in_class_c_mode) return;
 
     int backoff;
@@ -302,12 +328,19 @@ static void queue_next_send_message() {
 
 static void startup_tests() {
 }
+
+
 int main() {
     printf("\n  Mbed OS 5 Firmware Update over LoRaWAN  \n");
+    printf("\n----Version Modified as Nagra Project-----\n");
+
     printf("\n-- This version reports Temperature In Celsius --\n");
     #if defined(P_READING) && P_READING==1
     printf("\n-- It also reports air Humidity                --\n");
     #endif
+    uc.printHeapStats("INFO : ");
+    printf("\n-- Version V.2 !!! (JPATCH & DDELTA (w rtos)) --\n");
+    printf("\n--       This Will allow tests of patches     --\n");
 
     // Enable trace output for this demo, so we can see what the LoRaWAN stack does
     mbed_trace_init();
@@ -395,6 +428,7 @@ int main() {
 }
 
 // This is called from RX_DONE, so whenever a message came in
+// so it can be analysed by the application layer
 static void receive_message()
 {
     uint8_t rx_buffer[255] = { 0 };
@@ -411,6 +445,7 @@ static void receive_message()
 
     LW_UC_STATUS status = LW_UC_OK;
 
+
     if (port == 200) {
         status = uc.handleMulticastControlCommand(rx_buffer, retcode);
     }
@@ -423,30 +458,32 @@ static void receive_message()
         // blink LED when receiving a packet in Class C mode
         if (in_class_c_mode) {
             turn_led_on();
-            evqueue.call_in(200, &turn_led_off);
+            evqueue.call_in(100, &turn_led_off);
+            evqueue.call_in(150, &turn_led_on);
         }
     }
     else if (port == 202) {
         status = uc.handleClockSyncCommand(rx_buffer, retcode);
         if (status == LW_UC_OK) {
+            printf("Clock is Synced\n");
             clock_is_synced = true;
         }
     }
-    else {
-        printf("Data received on port %d (length %d): ", port, retcode);
-
-        for (uint8_t i = 0; i < retcode; i++) {
-            printf("%02x ", rx_buffer[i]);
-        }
-        printf("\n");
+    else if (port == STATUS_VERSION_PORT){
+        status = uc.handleStatusVersionCommand(rx_buffer, retcode);
+        printf(" > msg on port %d; outcome %u\n",port,status);
+    }else{
+        printf("Message on port not handled");
     }
 
     if (status != LW_UC_OK) {
         printf("Failed to handle UC command on port %d, status %d\n", port, status);
     }
+
+    printf("\n\n\n");
 }
 
-// Event handler
+// Event handler from deeper layers
 static void lora_event_handler(lorawan_event_t event) {
     switch (event) {
         case CONNECTED:
