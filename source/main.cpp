@@ -75,6 +75,7 @@ static void turn_led_off() {
 static void switch_to_class_a() {
     printf("Switch to Class A\n");
     turn_led_off();
+    evqueue.call_in(200, &turn_led_off); //confirm led turn off
     uc.printHeapStats("CLASSA ");
 
     in_class_c_mode = false;
@@ -311,6 +312,17 @@ int main() {
     }
 
     printf("Connection - In Progress ...\r\n");
+
+    //Init Sensors if supported at startup
+    #if defined(TARGET_DISCO_L475VG_IOT01A)
+
+    printf("Press the BLUE button to execute statups tests\n");
+
+    // hit the blue button to record a message
+    static InterruptIn btn(BUTTON1);
+    btn.fall(evqueue.event(&startup_tests));
+
+    #endif
 
     // make your event queue dispatching events forever
     evqueue.dispatch_forever();

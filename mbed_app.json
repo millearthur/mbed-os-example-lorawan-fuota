@@ -74,7 +74,7 @@
             "platform.stdio-baud-rate": 115200,
             "mbed-trace.enable": 1,
             "lora.over-the-air-activation": true,
-            "lora.duty-cycle-on": true,
+            "lora.duty-cycle-on": false,
             "lora.phy": "EU868"
         },
 
@@ -120,6 +120,8 @@
             "target.features_add"                       : ["BOOTLOADER","BLE"],
             "target.components_add"                     : ["QSPIF","BlueNRG_2"],
             "target.extra_labels_add"                   : ["CORDIO", "CORDIO_BLUENRG","BSP_B-L475E-IOT01"],
+            "activity-led":        "LED2",
+            "lora-radio":          "SX1272",
             "lora-spi-mosi":       "D11",
             "lora-spi-miso":       "D12",
             "lora-spi-sclk":       "D13",
@@ -168,8 +170,11 @@
         }
     },
     "macros": [
+        "P_READING=1",
+        "DO_MEMORY_PRINT=0",
         "ACTIVATE_BLE=1",
         "MBED_HEAP_STATS_ENABLED=1",
+        "MBED_CPU_STATS_ENABLED=1",
         "MBED_STACK_STATS_ENABLED=1",
         "JANPATCH_STREAM=BDFILE",
         "MBEDTLS_NO_DEFAULT_ENTROPY_SOURCES",

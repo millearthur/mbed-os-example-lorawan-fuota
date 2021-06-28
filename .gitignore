@@ -10,3 +10,5 @@ source/UpdateCerts.h
 UpdateCerts.h
 updates/
 .fota-keys/
+
+.DS_Store
