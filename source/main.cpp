@@ -26,10 +26,26 @@
 
 EventQueue evqueue;
 
-// Note: if the device has built-in dev eui (see dev_eui_helper.h), the dev eui will be overwritten in main()
-static uint8_t DEV_EUI[] = { 0x00, 0x80, 0x00, 0x00, 0x04, 0x00, 0x39, 0x94 };
-static uint8_t APP_EUI[] = { 0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x00, 0xC1, 0x84 };
-static uint8_t APP_KEY[] = { 0xB8, 0xB4, 0x33, 0x0D, 0xFD, 0xD5, 0xD8, 0x61, 0xE7, 0x37, 0xA6, 0xC9, 0x5E, 0x5F, 0xD3, 0xF0 };
+// DEV EUI is the authentication of the device itself in the network and to the server
+// The default given here should not be used for the wanted targets.
+// The value used for targets are either : 
+//      - Extracted from the lora chip (xDot)
+//      - Extrapolated from mbed_id (disco)
+//      - Not changed from default
+
+// Note: if the device has built-in dev eui (see dev_eui_helper.h), the dev eui will be overwritten in main()<
+static uint8_t DEV_EUI[] = { 0xbd, 0x25, 0xa6, 0x76, 0x37, 0xb0, 0xe5, 0x96};
+
+// APP EUI is Joiner EUI, this is not used
+// the value is kept to zero
+static uint8_t APP_EUI[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; 
+
+// APP KEY is used for authication to the app 
+// and to generate the multicast keys used for communication
+// To be able to address all devices at the same time,
+// all devices have a common APP_KEY (this key is the default used by the web_app)
+static uint8_t APP_KEY[] = { 0x35, 0x0b, 0x7f, 0x62, 0xcf, 0x56, 0xab, 0x3e, 0xfe, 0x9e, 0x2c, 0xc7, 0x24, 0xe8, 0x3f, 0xaa};
+
 
 static void lora_event_handler(lorawan_event_t event);
 static void lora_uc_send(LoRaWANUpdateClientSendParams_t &params);

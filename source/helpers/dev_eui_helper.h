@@ -43,10 +43,127 @@ int8_t get_built_in_dev_eui(uint8_t *buffer, size_t size) {
     return 0;
 }
 
+#elif defined(TARGET_DISCO_L475VG_IOT01A) 
+
+#include "tiny-aes.h"   // @todo: replace by Mbed TLS / hw crypto?
+
+#include "mbed_trace.h"
+#ifndef TRACE_GROUP
+#define TRACE_GROUP "EUIH"
+#endif
+
+#if defined(ACTIVATE_BLE)
+#if ACTIVATE_BLE == 1
+
+#include "ble/BLE.h"
+
+Gap::Address_t address_ble;
+static EventQueue event_queue(/* event count */ 10 * EVENTS_EVENT_SIZE);
+
+class BLE_EX : ble::Gap::EventHandler {
+public:
+    BLE_EX(BLE &ble, events::EventQueue &event_queue) :
+        _ble(ble),
+        _event_queue(event_queue),
+        _adv_data_builder(_adv_buffer) { }
+
+    ~BLE_EX() {
+    }
+
+    void start() {
+        printf("start, init events\n");
+        _ble.gap().setEventHandler(this);
+        _ble.init(this, &BLE_EX::on_init_complete); 
+        _event_queue.dispatch_forever();
+    }
+
+private:
+    /** Callback triggered when the ble initialization process has finished */
+    void on_init_complete(BLE::InitializationCompleteCallbackContext *params) {
+        if (params->error != BLE_ERROR_NONE) {
+            printf("Ble initialization failed.");
+            return;
+        }
+
+        Gap::AddressType_t addr_type;
+        BLE::Instance().gap().getAddress(&addr_type, address_ble);
+        printf("init complete\n");
+
+        _event_queue.break_dispatch();
+    }
+private:
+    /* Event handler */
+    void onDisconnectionComplete(const ble::DisconnectionCompleteEvent&) {
+    }
+
+private:
+    BLE &_ble;
+    events::EventQueue &_event_queue;
+    uint8_t _adv_buffer[ble::LEGACY_ADVERTISING_MAX_SIZE];
+    ble::AdvertisingDataBuilder _adv_data_builder;
+};
+
+/** Schedule processing of events from the BLE middleware in the event queue. */
+void schedule_ble_events(BLE::OnEventsToProcessCallbackContext *context) {
+    event_queue.call(Callback<void()>(&context->ble, &BLE::processEvents));
+    printf("Event processed ...\n");
+}
+#endif
+#endif
+
+int8_t get_built_in_dev_eui(uint8_t *buffer, size_t size) {
+    if (size != 8) return -2;
+
+    char* name;
+    name = (char*) malloc(10);
+    
+
+    #if defined(ACTIVATE_BLE)
+    #if ACTIVATE_BLE == 1
+
+    BLE &ble = BLE::Instance();
+    ble.onEventsToProcess(schedule_ble_events);
+    BLE_EX ex(ble, event_queue);
+    ex.start();
+
+    printf("%02x:%02x:%02x:%02x:%02x:%02x\r\n",
+            address_ble[5], address_ble[4], address_ble[3], address_ble[2], address_ble[1], address_ble[0]);
+
+    memcpy(name,address_ble,6);
+    ble.shutdown();
+    #endif
+
+
+    #else
+    mbed_mac_address(name);
+    #endif
+
+    tr_debug("NAME BUFFER VALLUE IS : %02x:%02x:%02x:%02x:%02x:%02x" , name[0], name[1], name[2], name[3], name[4], name[5]);
+    
+    uint8_t key[16] = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
+    key[0] = name[0];   //(unique_id & 0x000000ff);
+    key[1] = name[1];   //(unique_id & 0x0000ff00) >> 8;
+    key[2] = name[2];   //(unique_id & 0x00ff0000) >> 16;
+    key[3] = name[3];   //(unique_id & 0xff000000) >> 24;
+    key[4] = name[4];
+    key[5] = name[5];
+
+    uint8_t in[16] = { 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
+    uint8_t out[16] = {};
+
+    AES_ECB_encrypt(in,key,out,16);
+    memcpy(buffer,out,size);
+    return 0;
+}
+
 #else
 int8_t get_built_in_dev_eui(uint8_t *, size_t) {
     return -1;
 }
+#endif
+
+#ifndef TRACE_GROUP
+#undef TRACE_GROUP
 #endif
 
 #endif // _DEV_EUI_HELPER_H
