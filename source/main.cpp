@@ -338,9 +338,6 @@ int main() {
     #if defined(P_READING) && P_READING==1
     printf("\n-- It also reports air Humidity                --\n");
     #endif
-    uc.printHeapStats("INFO : ");
-    printf("\n-- Version V.2 !!! (JPATCH & DDELTA (w rtos)) --\n");
-    printf("\n--       This Will allow tests of patches     --\n");
 
     // Enable trace output for this demo, so we can see what the LoRaWAN stack does
     mbed_trace_init();
