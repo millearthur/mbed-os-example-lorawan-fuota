@@ -32,6 +32,10 @@ If you've added a new target configuration, please send a pull request to this r
     ```
     $ mbed import https://github.com/armmbed/mbed-os-example-lorawan-fuota
     ```
+To use this repo please clone from forked : 
+
+    $ mbed import https://github.com/millearthur/mbed-os-example-lorawan-fuota
+
 
 1. In `main.cpp` specify your AppEui and AppKey.
 1. In `mbed_app.json` specify your frequency plan (and [FSB](https://github.com/ARMmbed/mbed-os/blob/master/features/lorawan/FSB_Usage.txt)).
